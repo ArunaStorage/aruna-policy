@@ -54,11 +54,14 @@ pub fn evaluate_personal_token(context: &Context, attributes: &UserAttributes) -
             if let Some(d) = attributes.object_decision(&object_id, &context.operation) {
                 return d;
             }
+            possible_constraints.extend(attributes.collections_into_constraints(context.operation));
+            possible_constraints.extend(attributes.projects_into_constraints(context.operation));
         }
         Collection(collection_id) => {
             if let Some(d) = attributes.collection_decision(&collection_id, &context.operation) {
                 return d;
             }
+            possible_constraints.extend(attributes.projects_into_constraints(context.operation));
         }
 
         GlobalAdmin => {
@@ -76,8 +79,6 @@ pub fn evaluate_personal_token(context: &Context, attributes: &UserAttributes) -
             }
         }
     }
-    possible_constraints.extend(attributes.collections_into_constraints(context.operation));
-    possible_constraints.extend(attributes.projects_into_constraints(context.operation));
 
     if possible_constraints.is_empty() {
         Decision::Deny
@@ -345,5 +346,125 @@ mod tests {
 
         context.target = ResourceTarget::Personal(context.subject.user_id);
         assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+    }
+
+    #[test]
+    fn collection_test() {
+        let mut attributes = UserAttributes::default();
+        let mut context = Context {
+            subject: TokenSubject {
+                user_id: diesel_ulid::DieselUlid::generate(),
+                token_id: diesel_ulid::DieselUlid::generate(),
+            },
+            operation: PermissionLevel::READ,
+            target: ResourceTarget::Collection(DieselUlid::generate()),
+        };
+        // Default levels should be denied
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+        // If global admin is true, this should not work without a "correct token"
+        attributes.global_admin = true;
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+
+        attributes = create_populated_user_attributes(false, false);
+
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+        // Default levels should be denied
+        match evaluate_policy(&attributes, &context) {
+            // Random collection: Only 4 possible projects to choose from
+            Decision::Allow(a) => assert_eq!(a.len(), 4, "{:#?}", a),
+            _ => panic!(),
+        }
+
+        // Global admins should be allowed without exceptions
+        attributes = create_populated_user_attributes(true, false);
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+        assert_eq!(
+            evaluate_policy(&attributes, &context),
+            Decision::Allow(Vec::new())
+        );
+
+        // Is on deny list -> Should be denied
+        attributes = create_populated_user_attributes(false, false);
+        context.target = ResourceTarget::Collection(*attributes.collections.deny.first().unwrap());
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+
+        // Check explicit allowed permission for personal tokens
+        attributes = create_populated_user_attributes(false, false);
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+        for (k, v) in attributes.collections.allow.iter() {
+            context.target = ResourceTarget::Collection(*k);
+            if *v < PermissionLevel::READ {
+                assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+            } else {
+                assert_eq!(
+                    evaluate_policy(&attributes, &context),
+                    Decision::Allow(Vec::new()),
+                    "{:#?},{:#?}",
+                    &attributes,
+                    &context
+                );
+            }
+        }
+
+        // Check all explicit tokens for their perms
+        attributes = create_populated_user_attributes(false, false);
+        context.target = ResourceTarget::Collection(DieselUlid::generate());
+        for (k, v) in attributes.tokens.iter() {
+            context.subject.token_id = *k;
+
+            match v {
+                TokenPermissions::Project((id, perm)) => {
+                    if *perm < PermissionLevel::READ {
+                        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny)
+                    } else {
+                        assert_eq!(
+                            evaluate_policy(&attributes, &context),
+                            Decision::Allow(vec![Constraint::InProject(*id)])
+                        )
+                    }
+                }
+                TokenPermissions::Collection((_, _)) => {
+                    assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny)
+                }
+                TokenPermissions::Personal => (),
+            }
+        }
+    }
+
+    #[test]
+    fn project_test() {
+        let mut attributes = UserAttributes::default();
+        let mut context = Context {
+            subject: TokenSubject {
+                user_id: diesel_ulid::DieselUlid::generate(),
+                token_id: diesel_ulid::DieselUlid::generate(),
+            },
+            operation: PermissionLevel::ADMIN,
+            target: ResourceTarget::Project(DieselUlid::generate()),
+        };
+        // Default levels should be denied
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+        // If global admin is true, this should not work without a "correct token"
+        attributes.global_admin = true;
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+
+        attributes = create_populated_user_attributes(false, false);
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+
+        for (k, v) in attributes.projects.iter() {
+            context.target = ResourceTarget::Project(*k);
+            if *v != PermissionLevel::ADMIN {
+                assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+            } else {
+                assert_eq!(
+                    evaluate_policy(&attributes, &context),
+                    Decision::Allow(Vec::new()),
+                    "{:#?},{:#?}",
+                    &attributes,
+                    &context
+                );
+            }
+        }
     }
 }
