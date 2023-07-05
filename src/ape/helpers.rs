@@ -5,10 +5,7 @@ use diesel_ulid::DieselUlid;
 
 impl Context {
     pub fn is_personal(&self) -> bool {
-        match self.target {
-            super::structs::ResourceTarget::Personal(_) => true,
-            _ => false,
-        }
+        matches!(self.target, super::structs::ResourceTarget::Personal(_))
     }
 }
 
@@ -43,7 +40,7 @@ impl UserAttributes {
         req_permlevel: &PermissionLevel,
     ) -> Option<Decision> {
         let DenieablePerms { allow, deny } = &self.objects;
-        if deny.contains(&object_id) {
+        if deny.contains(object_id) {
             return Some(Decision::Deny);
         }
 
@@ -64,7 +61,7 @@ impl UserAttributes {
         req_permlevel: &PermissionLevel,
     ) -> Option<Decision> {
         let DenieablePerms { allow, deny } = &self.collections;
-        if deny.contains(&collection_id) {
+        if deny.contains(collection_id) {
             return Some(Decision::Deny);
         }
 
@@ -94,9 +91,8 @@ impl UserAttributes {
     pub fn get_personal_tokens(&self) -> Vec<DieselUlid> {
         let mut tokens = Vec::new();
         for (k, v) in self.tokens.iter() {
-            match v {
-                super::structs::TokenPermissions::Personal => tokens.push(k.clone()),
-                _ => (),
+            if let super::structs::TokenPermissions::Personal = v {
+                tokens.push(*k)
             }
         }
         tokens

@@ -50,14 +50,14 @@ pub fn evaluate_personal_token(context: &Context, attributes: &UserAttributes) -
 
     match context.target {
         Project(project_id) => return attributes.project_decision(&project_id, &context.operation),
-        Object(object_id) => match attributes.object_decision(&object_id, &context.operation) {
-            Some(d) => return d,
-            _ => (),
-        },
+        Object(object_id) => {
+            if let Some(d) = attributes.object_decision(&object_id, &context.operation) {
+                return d;
+            }
+        }
         Collection(collection_id) => {
-            match attributes.collection_decision(&collection_id, &context.operation) {
-                Some(d) => return d,
-                _ => (),
+            if let Some(d) = attributes.collection_decision(&collection_id, &context.operation) {
+                return d;
             }
         }
 
@@ -80,9 +80,9 @@ pub fn evaluate_personal_token(context: &Context, attributes: &UserAttributes) -
     possible_constraints.extend(attributes.projects_into_constraints(context.operation));
 
     if possible_constraints.is_empty() {
-        return Decision::Deny;
+        Decision::Deny
     } else {
-        return Decision::Allow(possible_constraints);
+        Decision::Allow(possible_constraints)
     }
 }
 
@@ -267,14 +267,14 @@ mod tests {
 
         // Is on deny list -> Should be denied
         attributes = create_populated_user_attributes(false, false);
-        context.target = ResourceTarget::Object(attributes.objects.deny.first().unwrap().clone());
+        context.target = ResourceTarget::Object(*attributes.objects.deny.first().unwrap());
         assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
 
         // Check explicit allowed permission for personal tokens
         attributes = create_populated_user_attributes(false, false);
         context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
         for (k, v) in attributes.objects.allow.iter() {
-            context.target = ResourceTarget::Object(k.clone());
+            context.target = ResourceTarget::Object(*k);
             if *v < PermissionLevel::WRITE {
                 assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
             } else {
@@ -292,7 +292,7 @@ mod tests {
         attributes = create_populated_user_attributes(false, false);
         context.target = ResourceTarget::Object(DieselUlid::generate());
         for (k, v) in attributes.tokens.iter() {
-            context.subject.token_id = k.clone();
+            context.subject.token_id = *k;
 
             match v {
                 TokenPermissions::Project((id, perm)) => {
@@ -301,7 +301,7 @@ mod tests {
                     } else {
                         assert_eq!(
                             evaluate_policy(&attributes, &context),
-                            Decision::Allow(vec![Constraint::InProject(id.clone())])
+                            Decision::Allow(vec![Constraint::InProject(*id)])
                         )
                     }
                 }
@@ -311,7 +311,7 @@ mod tests {
                     } else {
                         assert_eq!(
                             evaluate_policy(&attributes, &context),
-                            Decision::Allow(vec![Constraint::InCollection(id.clone())])
+                            Decision::Allow(vec![Constraint::InCollection(*id)])
                         )
                     }
                 }
