@@ -1,4 +1,7 @@
-use super::structs::{TokenPermissions, UserAttributes};
+use super::{
+    policy_evaluator::evaluate_policy,
+    structs::{Context, Decision, TokenPermissions, UserAttributes},
+};
 use anyhow::{anyhow, Result};
 use diesel_ulid::DieselUlid;
 use std::collections::HashMap;
@@ -36,6 +39,14 @@ impl AttributeCache {
             Ok(())
         } else {
             Err(anyhow!("User not found"))
+        }
+    }
+
+    pub fn check_permissions(&self, context: &Context) -> Decision {
+        if let Some(attributes) = self.user_policies.get(&context.subject.user_id) {
+            evaluate_policy(attributes, context)
+        } else {
+            Decision::Deny
         }
     }
 }
