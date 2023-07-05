@@ -319,4 +319,31 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn service_account_test() {
+        let attributes = create_populated_user_attributes(false, true);
+        let mut context = Context {
+            subject: TokenSubject {
+                user_id: diesel_ulid::DieselUlid::generate(),
+                token_id: diesel_ulid::DieselUlid::generate(),
+            },
+            operation: PermissionLevel::WRITE,
+            target: ResourceTarget::Object(DieselUlid::generate()),
+        };
+        // Default levels should be denied
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+
+        match evaluate_policy(&attributes, &context) {
+            // Two projects & Collections, One Denied collection
+            Decision::Allow(a) => assert_eq!(a.len(), 5),
+            _ => panic!(),
+        }
+
+        context.target = ResourceTarget::Personal(DieselUlid::generate());
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+
+        context.target = ResourceTarget::Personal(context.subject.user_id);
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+    }
 }
