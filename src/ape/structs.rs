@@ -4,7 +4,7 @@ use diesel_ulid::DieselUlid;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum PermissionLevel {
     NONE = 0,
     READ,
@@ -42,7 +42,7 @@ pub enum ResourceTarget {
     Collection(DieselUlid),
     Project(DieselUlid),
     GlobalAdmin,
-    Personal,
+    Personal(DieselUlid),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -53,15 +53,14 @@ pub struct TokenSubject {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Context {
-    pub subject: DieselUlid,
+    pub subject: TokenSubject,
     pub operation: PermissionLevel,
     pub target: ResourceTarget,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum Constraints {
+pub enum Constraint {
     InProject(DieselUlid),
-    NotInProject(DieselUlid),
     InCollection(DieselUlid),
     NotInCollection(DieselUlid),
 }
@@ -69,5 +68,5 @@ pub enum Constraints {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Decision {
     Deny,
-    Allow(Vec<Constraints>),
+    Allow(Vec<Constraint>),
 }

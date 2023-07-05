@@ -34,7 +34,5 @@ fn main() {
 
     // Serialize it to a JSON string.
     let j = serde_json::to_string(&data).unwrap();
-
-    // Print, write to a file, or send to an HTTP server.
     println!("{}", j);
 }
