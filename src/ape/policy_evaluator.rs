@@ -152,8 +152,8 @@ mod tests {
     use crate::ape::{
         policy_evaluator::evaluate_policy,
         structs::{
-            Context, Decision, DenieablePerms, PermissionLevel, ResourceTarget, TokenPermissions,
-            TokenSubject, UserAttributes,
+            Constraint, Context, Decision, DenieablePerms, PermissionLevel, ResourceTarget,
+            TokenPermissions, TokenSubject, UserAttributes,
         },
     };
 
@@ -228,5 +228,95 @@ mod tests {
             evaluate_policy(&attributes, &context),
             Decision::Allow(Vec::new())
         );
+    }
+
+    #[test]
+    fn object_test() {
+        let mut attributes = UserAttributes::default();
+        let mut context = Context {
+            subject: TokenSubject {
+                user_id: diesel_ulid::DieselUlid::generate(),
+                token_id: diesel_ulid::DieselUlid::generate(),
+            },
+            operation: PermissionLevel::WRITE,
+            target: ResourceTarget::Object(DieselUlid::generate()),
+        };
+        // Default levels should be denied
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+        // If global admin is true, this should not work without a "correct token"
+        attributes.global_admin = true;
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+
+        attributes = create_populated_user_attributes(false, false);
+
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+        // Default levels should be denied
+        match evaluate_policy(&attributes, &context) {
+            // Two projects & Collections, One Denied collection
+            Decision::Allow(a) => assert_eq!(a.len(), 5),
+            _ => panic!(),
+        }
+
+        // Global admins should be allowed without exceptions
+        attributes = create_populated_user_attributes(true, false);
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+        assert_eq!(
+            evaluate_policy(&attributes, &context),
+            Decision::Allow(Vec::new())
+        );
+
+        // Is on deny list -> Should be denied
+        attributes = create_populated_user_attributes(false, false);
+        context.target = ResourceTarget::Object(attributes.objects.deny.first().unwrap().clone());
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+
+        // Check explicit allowed permission for personal tokens
+        attributes = create_populated_user_attributes(false, false);
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+        for (k, v) in attributes.objects.allow.iter() {
+            context.target = ResourceTarget::Object(k.clone());
+            if *v < PermissionLevel::WRITE {
+                assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+            } else {
+                assert_eq!(
+                    evaluate_policy(&attributes, &context),
+                    Decision::Allow(Vec::new()),
+                    "{:#?},{:#?}",
+                    &attributes,
+                    &context
+                );
+            }
+        }
+
+        // Check all explicit tokens for their perms
+        attributes = create_populated_user_attributes(false, false);
+        context.target = ResourceTarget::Object(DieselUlid::generate());
+        for (k, v) in attributes.tokens.iter() {
+            context.subject.token_id = k.clone();
+
+            match v {
+                TokenPermissions::Project((id, perm)) => {
+                    if *perm < PermissionLevel::WRITE {
+                        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny)
+                    } else {
+                        assert_eq!(
+                            evaluate_policy(&attributes, &context),
+                            Decision::Allow(vec![Constraint::InProject(id.clone())])
+                        )
+                    }
+                }
+                TokenPermissions::Collection((id, perm)) => {
+                    if *perm < PermissionLevel::WRITE {
+                        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny)
+                    } else {
+                        assert_eq!(
+                            evaluate_policy(&attributes, &context),
+                            Decision::Allow(vec![Constraint::InCollection(id.clone())])
+                        )
+                    }
+                }
+                TokenPermissions::Personal => (),
+            }
+        }
     }
 }
