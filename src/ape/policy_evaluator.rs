@@ -23,10 +23,6 @@ macro_rules! unwrap_or_deny {
 pub fn evaluate_policy(attributes: &UserAttributes, context: &Context) -> Decision {
     let TokenSubject { token_id, .. } = context.subject;
 
-    // Global admins can do anything
-    if attributes.global_admin {
-        return Decision::Allow(Vec::new());
-    }
     if attributes.service_account && context.is_personal() {
         return Decision::Deny;
     }
@@ -47,6 +43,10 @@ pub fn evaluate_policy(attributes: &UserAttributes, context: &Context) -> Decisi
 
 pub fn evaluate_personal_token(context: &Context, attributes: &UserAttributes) -> Decision {
     let mut possible_constraints = Vec::new();
+
+    if attributes.global_admin {
+        return Decision::Allow(Vec::new());
+    }
 
     match context.target {
         Project(project_id) => return attributes.project_decision(&project_id, &context.operation),
@@ -141,4 +141,92 @@ pub fn evaluate_collection_scoped_token(
         }
     }
     Decision::Deny
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use diesel_ulid::DieselUlid;
+
+    use crate::ape::{
+        policy_evaluator::evaluate_policy,
+        structs::{
+            Context, Decision, DenieablePerms, PermissionLevel, ResourceTarget, TokenPermissions,
+            TokenSubject, UserAttributes,
+        },
+    };
+
+    pub fn create_populated_user_attributes(
+        global_admin: bool,
+        service_account: bool,
+    ) -> UserAttributes {
+        let mut project_perms = HashMap::new();
+        let mut collection_allow = HashMap::new();
+        let mut object_allow = HashMap::new();
+
+        let mut tokens = HashMap::new();
+        tokens.insert(DieselUlid::generate(), TokenPermissions::Personal);
+
+        for x in 0..5 {
+            let col_id = DieselUlid::generate();
+            let proj_id = DieselUlid::generate();
+            project_perms.insert(proj_id, PermissionLevel::from(x));
+            collection_allow.insert(col_id, PermissionLevel::from(x));
+            object_allow.insert(DieselUlid::generate(), PermissionLevel::from(x));
+            tokens.insert(
+                DieselUlid::generate(),
+                TokenPermissions::Collection((col_id, PermissionLevel::from(x))),
+            );
+            tokens.insert(
+                DieselUlid::generate(),
+                TokenPermissions::Project((proj_id, PermissionLevel::from(x))),
+            );
+        }
+
+        UserAttributes {
+            global_admin,
+            service_account,
+            projects: project_perms,
+            collections: DenieablePerms {
+                allow: collection_allow,
+                deny: vec![DieselUlid::generate()],
+            },
+            objects: DenieablePerms {
+                allow: object_allow,
+                deny: vec![DieselUlid::generate()],
+            },
+            tokens,
+        }
+    }
+
+    #[test]
+    fn admin_test() {
+        let mut attributes = UserAttributes::default();
+        let mut context = Context {
+            subject: TokenSubject {
+                user_id: diesel_ulid::DieselUlid::generate(),
+                token_id: diesel_ulid::DieselUlid::generate(),
+            },
+            operation: PermissionLevel::ADMIN,
+            target: ResourceTarget::GlobalAdmin,
+        };
+        // Default levels should be denied
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+        // If global admin is true, this should not work without a "correct token"
+        attributes.global_admin = true;
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+
+        attributes = create_populated_user_attributes(false, false);
+
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+        // Default levels should be denied
+        assert_eq!(evaluate_policy(&attributes, &context), Decision::Deny);
+        attributes = create_populated_user_attributes(true, false);
+        context.subject.token_id = *attributes.get_personal_tokens().first().unwrap();
+        assert_eq!(
+            evaluate_policy(&attributes, &context),
+            Decision::Allow(Vec::new())
+        );
+    }
 }

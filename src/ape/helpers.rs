@@ -1,8 +1,7 @@
-use diesel_ulid::DieselUlid;
-
 use super::structs::{
     Constraint, Context, Decision, DenieablePerms, PermissionLevel, UserAttributes,
 };
+use diesel_ulid::DieselUlid;
 
 impl Context {
     pub fn is_personal(&self) -> bool {
@@ -90,5 +89,16 @@ impl UserAttributes {
             }
         }
         Decision::Deny
+    }
+
+    pub fn get_personal_tokens(&self) -> Vec<DieselUlid> {
+        let mut tokens = Vec::new();
+        for (k, v) in self.tokens.iter() {
+            match v {
+                super::structs::TokenPermissions::Personal => tokens.push(k.clone()),
+                _ => (),
+            }
+        }
+        tokens
     }
 }
