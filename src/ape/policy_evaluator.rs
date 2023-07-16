@@ -1,6 +1,9 @@
 use super::structs::Context;
 use anyhow::Result;
-use aruna_cache::{notifications::NotificationCache, structs::ResourcePermission};
+use aruna_cache::{
+    notifications::NotificationCache,
+    structs::{Resource, ResourcePermission},
+};
 use aruna_rust_api::api::storage::models::v2::PermissionLevel;
 use diesel_ulid::DieselUlid;
 
@@ -40,12 +43,44 @@ impl PolicyEvaluator {
         &self,
         perms: Vec<(ResourcePermission, PermissionLevel)>,
         ctx: Context,
-    ) -> Result<bool> {
+    ) -> Result<(bool, Vec<Resource>)> {
+        let mut required_res = Vec::new();
         for (rp, lvl) in perms {
+            // GlobalAdmins are always welcome
             if rp == ResourcePermission::GlobalAdmin {
-                return Ok(true);
+                return Ok((true, vec![]));
+            }
+
+            match &ctx {
+                Context::Project(ctx_rp)
+                | Context::Collection(ctx_rp)
+                | Context::Dataset(ctx_rp)
+                | Context::Object(ctx_rp) => {
+                    if !ctx_rp.allow_sa && rp == ResourcePermission::ServiceAccount
+                        || ctx_rp.level > lvl.into()
+                    {
+                        return Ok((false, vec![]));
+                    }
+                    match rp {
+                        ResourcePermission::Resource(res) => {
+                            if res.get_id() == ctx_rp.id {
+                                return Ok((false, vec![]));
+                            } else {
+                                required_res.push(res)
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                Context::User(ctx_rp) => todo!(), // Associate SA / Token with user_id in cache ?
+                Context::GlobalAdmin => (),
             }
         }
-        Ok(false)
+        if required_res.is_empty() {
+            Ok((false, vec![]))
+        }else{
+            Ok((true, required_res))
+        }
+        
     }
 }

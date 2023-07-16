@@ -1,3 +1,4 @@
+use aruna_rust_api::api::storage::models::v2::PermissionLevel;
 use diesel_ulid::DieselUlid;
 use serde::Deserialize;
 use serde::Serialize;
@@ -12,6 +13,7 @@ pub enum PermissionLevels {
     ADMIN,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct ResourcePermission {
     pub id: DieselUlid,
     pub level: PermissionLevels,
@@ -24,6 +26,19 @@ impl ResourcePermission {
             id,
             level,
             allow_sa,
+        }
+    }
+}
+
+impl From<PermissionLevel> for PermissionLevels {
+    fn from(value: PermissionLevel) -> Self {
+        match &value {
+            PermissionLevel::Unspecified => PermissionLevels::DENY,
+            PermissionLevel::None => PermissionLevels::NONE,
+            PermissionLevel::Read => PermissionLevels::READ,
+            PermissionLevel::Append => PermissionLevels::APPEND,
+            PermissionLevel::Write => PermissionLevels::WRITE,
+            PermissionLevel::Admin => PermissionLevels::ADMIN,
         }
     }
 }
