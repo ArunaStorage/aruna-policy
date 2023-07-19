@@ -1,34 +1,38 @@
+use std::sync::Arc;
+
+use crate::token::token_handler::TokenHandler;
+
 use super::structs::Context;
 use anyhow::{anyhow, Result};
 use aruna_cache::{
     notifications::NotificationCache,
+    query::QueryHandler,
     structs::{Resource, ResourcePermission},
 };
-use aruna_rust_api::api::storage::models::v2::PermissionLevel;
+use aruna_rust_api::api::storage::models::v2::{PermissionLevel, Token};
 use diesel_ulid::DieselUlid;
 
 struct PolicyEvaluator {
-    cache: NotificationCache,
-}
-
-enum Token {
-    Oidc(String),
-    Regular(DieselUlid),
+    cache: Arc<NotificationCache>,
+    token_handler: TokenHandler,
 }
 
 impl PolicyEvaluator {
-    pub async fn new(client_token: &str, server_addr: &str) -> Result<Self> {
+    pub async fn new(
+        client_token: &str,
+        server_addr: &str,
+        qhandler: Box<dyn QueryHandler + Send + Sync>,
+    ) -> Result<Self> {
+        let cache = Arc::new(NotificationCache::new(client_token, server_addr, qhandler).await?);
+
         Ok(PolicyEvaluator {
-            cache: NotificationCache::new(client_token, server_addr).await?,
+            cache: Arc::new(NotificationCache::new(client_token, server_addr, qhandler).await?),
+            token_handler: TokenHandler::new(cache.clone()),
         })
     }
 
     pub async fn check_permissions(&self, token: &str, ctx: Context) -> Result<DieselUlid> {
-        let permissions: Vec<(ResourcePermission, PermissionLevel)> =
-            match self.extract_token(token).await {
-                Token::Oidc(oidc) => todo!(), //self.cache.,
-                Token::Regular(ulid) => todo!(),
-            };
+        let permissions: Vec<(ResourcePermission, PermissionLevel)> = Vec::new();
 
         let (ok, constraints) = self.filter_perms(permissions, ctx)?;
 
@@ -39,10 +43,6 @@ impl PolicyEvaluator {
         //self.cache.;
 
         Err(anyhow!("Invalid permissions"))
-    }
-
-    async fn extract_token(&self, _token: &str) -> Token {
-        Token::Oidc("A test_token".to_string())
     }
 
     fn filter_perms(
