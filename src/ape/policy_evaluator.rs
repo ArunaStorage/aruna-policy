@@ -1,5 +1,5 @@
 use super::structs::Context;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use aruna_cache::{
     notifications::NotificationCache,
     structs::{Resource, ResourcePermission},
@@ -23,23 +23,29 @@ impl PolicyEvaluator {
         })
     }
 
-    pub async fn check_permissions(&self, token: &str, ctx: Context) -> Result<bool> {
+    pub async fn check_permissions(&self, token: &str, ctx: Context) -> Result<DieselUlid> {
         let permissions: Vec<(ResourcePermission, PermissionLevel)> =
             match self.extract_token(token).await {
                 Token::Oidc(oidc) => todo!(), //self.cache.,
                 Token::Regular(ulid) => todo!(),
             };
 
+        let (ok, constraints) = self.filter_perms(permissions, ctx)?;
+
+        if !ok {
+            return Err(anyhow!("Invalid permissions"));
+        }
+
         //self.cache.;
 
-        Ok(false)
+        Err(anyhow!("Invalid permissions"))
     }
 
-    pub async fn extract_token(&self, _token: &str) -> Token {
+    async fn extract_token(&self, _token: &str) -> Token {
         Token::Oidc("A test_token".to_string())
     }
 
-    pub fn filter_perms(
+    fn filter_perms(
         &self,
         perms: Vec<(ResourcePermission, PermissionLevel)>,
         ctx: Context,
@@ -78,9 +84,8 @@ impl PolicyEvaluator {
         }
         if required_res.is_empty() {
             Ok((false, vec![]))
-        }else{
+        } else {
             Ok((true, required_res))
         }
-        
     }
 }

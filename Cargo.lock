@@ -61,9 +61,9 @@ checksum = "3b13c32d80ecc7ab747b80c3784bce54ee8a7a0cc4fbda9bf4cda2cf6fe90854"
 
 [[package]]
 name = "aruna-cache"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e220e87f86a8f129216f6aa50de43f1da50f1eaa8f58e5141cded016b5c9e85"
+checksum = "545191aa062dc2ec3bf0674523c3b57f6dcc1e7beda15bb4e60ecef81163f1e1"
 dependencies = [
  "ahash",
  "anyhow",
