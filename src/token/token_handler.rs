@@ -1,7 +1,10 @@
 use anyhow::anyhow;
 use anyhow::Result;
 use aruna_cache::notifications::NotificationCache;
+use base64::engine::general_purpose;
+use base64::Engine;
 use diesel_ulid::DieselUlid;
+use jsonwebtoken::Algorithm;
 use jsonwebtoken::{decode, decode_header, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -34,15 +37,10 @@ struct KeyCloakResponse {
 ///
 #[derive(Debug, Serialize, Deserialize)]
 struct ArunaTokenClaims {
+    iss: String,
     sub: String,
-    subtype: i32,
-    uid: String,
-    exp: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct BasicClaims {
-    sub: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    uid: Option<String>,
     exp: usize,
 }
 
@@ -61,41 +59,66 @@ impl TokenHandler {
         }
     }
 
-    async fn convert_pubkey_to_decoding_key(&self) -> Result<HashMap<i64, DecodingKey>> {
-        pubkey
-            .into_iter()
-            .map(
-                |pubkey| match DecodingKey::from_ed_pem(pubkey.pubkey.as_bytes()) {
-                    Ok(e) => Ok((pubkey.id, e)),
-                    Err(_) => Err(ArunaError::AuthorizationError(
-                        AuthorizationError::PERMISSIONDENIED,
-                    )),
-                },
-            )
-            .collect::<Result<HashMap<_, _>, _>>()
+    pub async fn process_token(
+        &self,
+        token: &str,
+    ) -> Result<(Option<DieselUlid>, Option<DieselUlid>, bool)> {
+        let decoded = general_purpose::STANDARD.decode(token)?;
+        let claims: ArunaTokenClaims = serde_json::from_slice(&decoded)?;
+
+        let (checked_claims, is_proxy) = match claims.sub.as_str() {
+            "oidc.test.com" => (self.validate_oidc_only(token).await?, false),
+            "aruna" => self.validate_aruna(token).await?,
+            _ => return Err(anyhow!("Unknown issuer")),
+        };
+
+        todo!();
+        Ok((None, None, is_proxy))
     }
 
-    pub async fn validate_oidc_only(&self, token: &str) -> Result<String> {
+    async fn validate_aruna(&self, token: &str) -> Result<(ArunaTokenClaims, bool)> {
+        let kid = decode_header(token)?
+            .kid
+            .ok_or_else(|| anyhow!("Unspecified kid"))?;
+
+        let key = self
+            .cache
+            .cache
+            .pubkeys
+            .get(&kid.parse::<i32>()?)
+            .ok_or_else(|| anyhow!("Unspecified kid"))?
+            .clone();
+
+        let (dec_key, is_proxy) = match key {
+            aruna_cache::structs::PubKey::DataProxy(k) => {
+                (DecodingKey::from_ed_pem(k.as_bytes())?, true)
+            }
+            aruna_cache::structs::PubKey::Server(k) => {
+                (DecodingKey::from_ed_pem(k.as_bytes())?, false)
+            }
+        };
+        Ok((
+            decode::<ArunaTokenClaims>(token, &dec_key, &Validation::new(Algorithm::EdDSA))?.claims,
+            is_proxy,
+        ))
+    }
+
+    async fn validate_oidc_only(&self, token: &str) -> Result<ArunaTokenClaims> {
         let header = decode_header(token)?;
-
-        // Process as keycloak token
-        let pem_token = self.get_token_realminfo().await?;
         // Validate key
-
         let read = {
             let lock = self.oidc_pubkey.try_read().unwrap();
             lock.clone()
         };
         let token_data = match read {
-            Some(pk) => decode::<BasicClaims>(token, &pk, &Validation::new(header.alg))?,
-            None => decode::<BasicClaims>(
+            Some(pk) => decode::<ArunaTokenClaims>(token, &pk, &Validation::new(header.alg))?,
+            None => decode::<ArunaTokenClaims>(
                 token,
                 &self.get_token_realminfo().await?,
                 &Validation::new(header.alg),
             )?,
         };
-        let subject = token_data.claims.sub;
-        Ok(subject)
+        Ok(token_data.claims)
     }
 
     async fn get_token_realminfo(&self) -> Result<DecodingKey> {
