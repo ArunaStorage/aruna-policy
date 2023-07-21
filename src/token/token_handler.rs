@@ -7,14 +7,9 @@ use diesel_ulid::DieselUlid;
 use jsonwebtoken::Algorithm;
 use jsonwebtoken::{decode, decode_header, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::RwLock;
-
-enum Token {
-    Oidc(String),
-    Regular(DieselUlid),
-    DataProxy(Option<DieselUlid>),
-}
 
 #[derive(Deserialize, Debug)]
 struct KeyCloakResponse {
@@ -72,8 +67,18 @@ impl TokenHandler {
             _ => return Err(anyhow!("Unknown issuer")),
         };
 
-        todo!();
-        Ok((None, None, is_proxy))
+        let (user_id, token_id) = match checked_claims.uid {
+            Some(uid) => (
+                Some(DieselUlid::from_str(&uid)?),
+                Some(DieselUlid::from_str(&checked_claims.sub)?),
+            ),
+            None => (
+                Some(DieselUlid::from_str(&checked_claims.sub)?),
+                Some(DieselUlid::from_str(&checked_claims.sub)?),
+            ),
+        };
+
+        Ok((user_id, token_id, is_proxy))
     }
 
     async fn validate_aruna(&self, token: &str) -> Result<(ArunaTokenClaims, bool)> {
