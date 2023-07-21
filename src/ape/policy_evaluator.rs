@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::token::token_handler::TokenHandler;
 
-use super::structs::Context;
+use super::structs::{Context, ResourceContext};
 use anyhow::{anyhow, Result};
 use aruna_cache::{
     notifications::NotificationCache,
@@ -31,7 +31,33 @@ impl PolicyEvaluator {
         })
     }
 
-    pub async fn check_permissions(&self, token: &str, ctx: Context) -> Result<Option<DieselUlid>> {
+    pub async fn check_multi_context(
+        &self,
+        token: &str,
+        _ctxs: Vec<ResourceContext>,
+    ) -> Result<Option<DieselUlid>> {
+        let (_user_id, _token_id, _is_proxy) = self.token_handler.process_token(token).await?;
+
+        todo!();
+        // let perms = if let Some(token) = token_id {
+        //     self.cache
+        //         .cache
+        //         .get_permissions(&token)
+        //         .ok_or(anyhow!("permissions not found"))?
+        // } else {
+        //     vec![]
+        // };
+
+        //let (ok, _constraints) = filter_perms(perms, user_id, is_proxy, ctx);
+
+        // if !ok {
+        //     return Err(anyhow!("Invalid permissions"));
+        // }
+
+        // Ok(user_id)
+    }
+
+    pub async fn check_context(&self, token: &str, ctx: Context) -> Result<Option<DieselUlid>> {
         let (user_id, token_id, is_proxy) = self.token_handler.process_token(token).await?;
 
         let perms = if let Some(token) = token_id {
@@ -49,10 +75,10 @@ impl PolicyEvaluator {
             return Err(anyhow!("Invalid permissions"));
         }
 
-        //self.cache.;
         Ok(user_id)
     }
 }
+
 fn filter_perms(
     perms: Vec<(ResourcePermission, PermissionLevel)>,
     user_id: Option<DieselUlid>,
@@ -67,10 +93,10 @@ fn filter_perms(
         }
 
         match &ctx {
-            Context::Project(Some(ctx_rp))
-            | Context::Collection(ctx_rp)
-            | Context::Dataset(ctx_rp)
-            | Context::Object(ctx_rp) => {
+            Context::ResourceContext(ResourceContext::Project(Some(ctx_rp)))
+            | Context::ResourceContext(ResourceContext::Collection(ctx_rp))
+            | Context::ResourceContext(ResourceContext::Dataset(ctx_rp))
+            | Context::ResourceContext(ResourceContext::Object(ctx_rp)) => {
                 if !ctx_rp.allow_sa && rp == ResourcePermission::ServiceAccount {
                     return (false, vec![]);
                 }
@@ -98,8 +124,9 @@ fn filter_perms(
                     return (false, vec![]);
                 }
             }
-            Context::Project(None) => todo!(), // Associate SA / Token with user_id in cache ?
+            Context::ResourceContext(ResourceContext::Project(None)) => todo!(), // Associate SA / Token with user_id in cache ?
             Context::GlobalAdmin => (),
+            Context::Empty => todo!(),
         }
     }
     if constraints.is_empty() {
@@ -111,8 +138,6 @@ fn filter_perms(
 
 #[cfg(test)]
 mod tests {
-    use aruna_rust_api::api::storage::services::v2::UserPermission;
-
     use super::*;
     use crate::ape::structs::{ApeResourcePermission, ApeUserPermission, PermissionLevels};
 
@@ -190,7 +215,7 @@ mod tests {
             )],
             user_id,
             false,
-            Context::Object(resource_permission.clone()),
+            Context::ResourceContext(ResourceContext::Object(resource_permission.clone())),
         );
         assert_eq!(result, (true, vec![]));
 
@@ -202,7 +227,7 @@ mod tests {
             )],
             user_id,
             false,
-            Context::Object(resource_permission.clone()),
+            Context::ResourceContext(ResourceContext::Object(resource_permission.clone())),
         );
         assert_eq!(result, (false, vec![]));
 
@@ -215,11 +240,11 @@ mod tests {
             )],
             user_id,
             false,
-            Context::Object(ApeResourcePermission {
+            Context::ResourceContext(ResourceContext::Object(ApeResourcePermission {
                 id: DieselUlid::generate(),
                 level: PermissionLevels::ADMIN,
                 allow_sa: true,
-            }),
+            })),
         );
         assert_eq!(result, (true, vec![Resource::Object(ulid)]));
 
@@ -228,7 +253,7 @@ mod tests {
             vec![(ResourcePermission::ServiceAccount, PermissionLevel::Admin)],
             user_id,
             true,
-            Context::Object(resource_permission.clone()),
+            Context::ResourceContext(ResourceContext::Object(resource_permission.clone())),
         );
         assert_eq!(result, (false, vec![]));
     }

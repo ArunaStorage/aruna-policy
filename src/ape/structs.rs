@@ -50,11 +50,17 @@ pub struct ApeUserPermission {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum Context {
+pub enum ResourceContext {
     Project(Option<ApeResourcePermission>),
     Collection(ApeResourcePermission),
     Dataset(ApeResourcePermission),
     Object(ApeResourcePermission),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum Context {
+    Empty,
+    ResourceContext(ResourceContext),
     User(ApeUserPermission),
     GlobalAdmin,
 }
