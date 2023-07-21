@@ -67,7 +67,7 @@ fn filter_perms(
         }
 
         match &ctx {
-            Context::Project(ctx_rp)
+            Context::Project(Some(ctx_rp))
             | Context::Collection(ctx_rp)
             | Context::Dataset(ctx_rp)
             | Context::Object(ctx_rp) => {
@@ -89,7 +89,7 @@ fn filter_perms(
             }
             Context::User(ctx_rp) => {
                 if let Some(uid) = user_id {
-                    if uid == *ctx_rp && !is_service_account {
+                    if uid == ctx_rp.id && !is_service_account {
                         return (true, vec![]);
                     } else {
                         return (false, vec![]);
@@ -97,7 +97,8 @@ fn filter_perms(
                 } else {
                     return (false, vec![]);
                 }
-            } // Associate SA / Token with user_id in cache ?
+            }
+            Context::Project(None) => todo!(), // Associate SA / Token with user_id in cache ?
             Context::GlobalAdmin => (),
         }
     }
@@ -110,13 +111,15 @@ fn filter_perms(
 
 #[cfg(test)]
 mod tests {
+    use aruna_rust_api::api::storage::services::v2::UserPermission;
+
     use super::*;
-    use crate::ape::structs::{ApeResPerm, PermissionLevels};
+    use crate::ape::structs::{ApeResourcePermission, ApeUserPermission, PermissionLevels};
 
     #[test]
     fn test_filter_perms() {
         // Create a sample resource permission
-        let resource_permission = ApeResPerm {
+        let resource_permission = ApeResourcePermission {
             id: DieselUlid::generate(),
             level: PermissionLevels::ADMIN,
             allow_sa: true,
@@ -142,7 +145,10 @@ mod tests {
             )],
             user_id,
             false,
-            Context::User(user_id.unwrap()),
+            Context::User(ApeUserPermission {
+                id: user_id.unwrap(),
+                allow_proxy: false,
+            }),
         );
         assert_eq!(result, (true, vec![]));
 
@@ -154,7 +160,10 @@ mod tests {
             )],
             user_id,
             true,
-            Context::User(user_id.unwrap()),
+            Context::User(ApeUserPermission {
+                id: user_id.unwrap(),
+                allow_proxy: false,
+            }),
         );
         assert_eq!(result, (false, vec![]));
 
@@ -166,7 +175,10 @@ mod tests {
             )],
             Some(DieselUlid::generate()),
             false,
-            Context::User(user_id.unwrap()),
+            Context::User(ApeUserPermission {
+                id: user_id.unwrap(),
+                allow_proxy: false,
+            }),
         );
         assert_eq!(result, (false, vec![]));
 
@@ -203,7 +215,7 @@ mod tests {
             )],
             user_id,
             false,
-            Context::Object(ApeResPerm {
+            Context::Object(ApeResourcePermission {
                 id: DieselUlid::generate(),
                 level: PermissionLevels::ADMIN,
                 allow_sa: true,

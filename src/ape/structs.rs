@@ -14,15 +14,15 @@ pub enum PermissionLevels {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct ApeResPerm {
+pub struct ApeResourcePermission {
     pub id: DieselUlid,
     pub level: PermissionLevels,
     pub allow_sa: bool,
 }
 
-impl ApeResPerm {
+impl ApeResourcePermission {
     pub fn new(id: DieselUlid, level: PermissionLevels, allow_sa: bool) -> Self {
-        ApeResPerm {
+        ApeResourcePermission {
             id,
             level,
             allow_sa,
@@ -43,11 +43,18 @@ impl From<PermissionLevel> for PermissionLevels {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct ApeUserPermission {
+    pub id: DieselUlid,
+    pub allow_proxy: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum Context {
-    Project(ApeResPerm),
-    Collection(ApeResPerm),
-    Dataset(ApeResPerm),
-    Object(ApeResPerm),
-    User(DieselUlid),
+    Project(Option<ApeResourcePermission>),
+    Collection(ApeResourcePermission),
+    Dataset(ApeResourcePermission),
+    Object(ApeResourcePermission),
+    User(ApeUserPermission),
     GlobalAdmin,
 }
