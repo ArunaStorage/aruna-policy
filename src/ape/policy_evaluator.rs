@@ -12,7 +12,7 @@ use aruna_cache::{
 use aruna_rust_api::api::storage::models::v2::PermissionLevel;
 use diesel_ulid::DieselUlid;
 
-struct PolicyEvaluator {
+pub struct PolicyEvaluator {
     cache: Arc<NotificationCache>,
     token_handler: TokenHandler,
 }
