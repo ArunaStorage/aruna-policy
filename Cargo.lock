@@ -95,7 +95,7 @@ dependencies = [
 
 [[package]]
 name = "aruna_policy"
-version = "0.1.2"
+version = "0.2.0-alpha.1"
 dependencies = [
  "anyhow",
  "aruna-cache",
