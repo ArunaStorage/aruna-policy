@@ -77,6 +77,20 @@ impl PolicyEvaluator {
 
         Ok(user_id)
     }
+
+    fn get_user_permissions(
+        &self,
+        user: DieselUlid,
+        token: Option<DieselUlid>,
+    ) -> Result<Vec<(ResourcePermission, PermissionLevel)>> {
+        let user = self
+            .cache
+            .cache
+            .get_user(user)
+            .ok_or_else(|| anyhow!("User not found"))?;
+
+        Ok(vec![])
+    }
 }
 
 fn filter_perms(

@@ -1,3 +1,7 @@
+use std::str::FromStr;
+
+use anyhow::anyhow;
+use aruna_rust_api::api::storage::models::v2::Permission;
 use aruna_rust_api::api::storage::models::v2::PermissionLevel;
 use diesel_ulid::DieselUlid;
 use serde::Deserialize;
@@ -63,4 +67,41 @@ pub enum Context {
     ResourceContext(ResourceContext),
     User(ApeUserPermission),
     GlobalAdmin,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum ResWithPerm {
+    Project((DieselUlid, PermissionLevel)),
+    Collection((DieselUlid, PermissionLevel)),
+    Dataset((DieselUlid, PermissionLevel)),
+    Object((DieselUlid, PermissionLevel)),
+}
+
+impl TryFrom<Permission> for ResWithPerm {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Permission) -> Result<Self, Self::Error> {
+        Ok(
+            match value
+                .resource_id
+                .ok_or_else(|| anyhow!("Unknown resource_id"))?
+            {
+                aruna_rust_api::api::storage::models::v2::permission::ResourceId::ProjectId(id) => {
+                    ResWithPerm::Project((DieselUlid::from_str(&id)?, value.permission_level()))
+                }
+
+                aruna_rust_api::api::storage::models::v2::permission::ResourceId::CollectionId(
+                    id,
+                ) => {
+                    ResWithPerm::Collection((DieselUlid::from_str(&id)?, value.permission_level()))
+                }
+                aruna_rust_api::api::storage::models::v2::permission::ResourceId::DatasetId(id) => {
+                    ResWithPerm::Dataset((DieselUlid::from_str(&id)?, value.permission_level()))
+                }
+                aruna_rust_api::api::storage::models::v2::permission::ResourceId::ObjectId(id) => {
+                    ResWithPerm::Object((DieselUlid::from_str(&id)?, value.permission_level()))
+                }
+            },
+        )
+    }
 }
