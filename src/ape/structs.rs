@@ -75,6 +75,8 @@ pub enum ResWithPerm {
     Collection((DieselUlid, PermissionLevel)),
     Dataset((DieselUlid, PermissionLevel)),
     Object((DieselUlid, PermissionLevel)),
+    User(DieselUlid),
+    GlobalAdmin,
 }
 
 impl TryFrom<Permission> for ResWithPerm {

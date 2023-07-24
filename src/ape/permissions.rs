@@ -23,51 +23,24 @@ impl GetPermissions for User {
             for t in attributes.tokens {
                 if t.id == t_id.to_string() {
                     if let Some(perm) = t.permission {
-                        if let Some(p) = perm.resource_id {
-                            match p {
-                                ResourceId::ProjectId(res) => {
-                                    return Ok(vec![(
-                                        ResourcePermission::Resource(Resource::Project(
-                                            DieselUlid::from_str(&res)?,
-                                        )),
-                                        perm.permission_level(),
-                                    )])
-                                }
-                                ResourceId::CollectionId(res) => {
-                                    return Ok(vec![(
-                                        ResourcePermission::Resource(Resource::Collection(
-                                            DieselUlid::from_str(&res)?,
-                                        )),
-                                        perm.permission_level(),
-                                    )])
-                                }
-                                ResourceId::DatasetId(res) => {
-                                    return Ok(vec![(
-                                        ResourcePermission::Resource(Resource::Dataset(
-                                            DieselUlid::from_str(&res)?,
-                                        )),
-                                        perm.permission_level(),
-                                    )])
-                                }
-                                ResourceId::ObjectId(res) => {
-                                    return Ok(vec![(
-                                        ResourcePermission::Resource(Resource::Object(
-                                            DieselUlid::from_str(&res)?,
-                                        )),
-                                        perm.permission_level(),
-                                    )])
-                                }
-                            }
-                        }
+                        return Ok(vec![perm.try_into()?]);
                     }
                 }
             }
         }
 
         // Process "personal" permissions
+        let mut result = vec![];
+        if attributes.global_admin {
+            result.push(ResWithPerm::GlobalAdmin);
+        }
+        if !attributes.service_account {
+            result.push(ResWithPerm::User(DieselUlid::from_str(self.id.as_str())?));
+        }
+        for perm in attributes.personal_permissions {
+            result.push(perm.try_into()?);
+        }
 
-        for perm in attributes.personal_permissions {}
-
-        Ok(vec![])
+        Ok(result)
     }
 }
