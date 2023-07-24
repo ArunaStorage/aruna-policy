@@ -61,9 +61,9 @@ checksum = "3b13c32d80ecc7ab747b80c3784bce54ee8a7a0cc4fbda9bf4cda2cf6fe90854"
 
 [[package]]
 name = "aruna-cache"
-version = "0.2.1-alpha.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "329f0fba727b3936321a204c37a129ef2777376c8e7987005bcc79baf21723a6"
+checksum = "d663e88284fe7299990ffbae51f109e08c92b71db49af87b405d864db9bee5e9"
 dependencies = [
  "ahash",
  "anyhow",
@@ -73,6 +73,9 @@ dependencies = [
  "bincode",
  "dashmap",
  "diesel-ulid",
+ "reqwest",
+ "serde",
+ "serde_json",
  "tokio",
  "tonic",
  "xxhash-rust",
