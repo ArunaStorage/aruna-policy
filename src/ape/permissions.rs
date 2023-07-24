@@ -1,46 +1,41 @@
+use super::structs::AllUserPermission;
 use anyhow::anyhow;
 use anyhow::Result;
-use aruna_cache::structs::Resource;
-use aruna_cache::structs::ResourcePermission;
-use aruna_rust_api::api::storage::models::v2::permission::ResourceId;
 use aruna_rust_api::api::storage::models::v2::User;
 use diesel_ulid::DieselUlid;
 use std::str::FromStr;
 
-use super::structs::ResWithPerm;
-
 pub trait GetPermissions {
-    fn get_permissions(&self, token_id: Option<DieselUlid>) -> Result<Vec<ResWithPerm>>;
+    fn get_permissions(&self, token_id: Option<DieselUlid>) -> Result<AllUserPermission>;
 }
 
 impl GetPermissions for User {
-    fn get_permissions(&self, token_id: Option<DieselUlid>) -> Result<Vec<ResWithPerm>> {
+    fn get_permissions(&self, token_id: Option<DieselUlid>) -> Result<AllUserPermission> {
         let attributes = self
             .attributes
+            .clone()
             .ok_or_else(|| anyhow!("Missing user attributes"))?;
+
+        let mut all_user_perm = AllUserPermission {
+            perms: vec![],
+            user_id: Some(DieselUlid::from_str(self.id.as_str())?),
+            is_sa: attributes.service_account,
+            is_admin: attributes.global_admin,
+        };
 
         if let Some(t_id) = token_id {
             for t in attributes.tokens {
                 if t.id == t_id.to_string() {
                     if let Some(perm) = t.permission {
-                        return Ok(vec![perm.try_into()?]);
+                        all_user_perm.perms.push(perm.try_into()?);
+                        return Ok(all_user_perm);
                     }
                 }
             }
         }
-
-        // Process "personal" permissions
-        let mut result = vec![];
-        if attributes.global_admin {
-            result.push(ResWithPerm::GlobalAdmin);
-        }
-        if !attributes.service_account {
-            result.push(ResWithPerm::User(DieselUlid::from_str(self.id.as_str())?));
-        }
         for perm in attributes.personal_permissions {
-            result.push(perm.try_into()?);
+            all_user_perm.perms.push(perm.try_into()?);
         }
-
-        Ok(result)
+        Ok(all_user_perm)
     }
 }

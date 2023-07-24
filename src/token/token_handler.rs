@@ -57,12 +57,12 @@ impl TokenHandler {
     pub async fn process_token(
         &self,
         token: &str,
-    ) -> Result<(Option<DieselUlid>, Option<DieselUlid>, bool)> {
+    ) -> Result<(Option<DieselUlid>, Option<DieselUlid>)> {
         let decoded = general_purpose::STANDARD.decode(token)?;
         let claims: ArunaTokenClaims = serde_json::from_slice(&decoded)?;
 
-        let (checked_claims, is_proxy) = match claims.sub.as_str() {
-            "oidc.test.com" => (self.validate_oidc_only(token).await?, false),
+        let checked_claims = match claims.sub.as_str() {
+            "oidc.test.com" => self.validate_oidc_only(token).await?,
             "aruna" => self.validate_aruna(token).await?,
             _ => return Err(anyhow!("Unknown issuer")),
         };
@@ -78,10 +78,10 @@ impl TokenHandler {
             ),
         };
 
-        Ok((user_id, token_id, is_proxy))
+        Ok((user_id, token_id))
     }
 
-    async fn validate_aruna(&self, token: &str) -> Result<(ArunaTokenClaims, bool)> {
+    async fn validate_aruna(&self, token: &str) -> Result<ArunaTokenClaims> {
         let kid = decode_header(token)?
             .kid
             .ok_or_else(|| anyhow!("Unspecified kid"))?;
@@ -94,18 +94,11 @@ impl TokenHandler {
             .ok_or_else(|| anyhow!("Unspecified kid"))?
             .clone();
 
-        let (dec_key, is_proxy) = match key {
-            aruna_cache::structs::PubKey::DataProxy(k) => {
-                (DecodingKey::from_ed_pem(k.as_bytes())?, true)
-            }
-            aruna_cache::structs::PubKey::Server(k) => {
-                (DecodingKey::from_ed_pem(k.as_bytes())?, false)
-            }
+        let dec_key = match key {
+            aruna_cache::structs::PubKey::DataProxy(k) => DecodingKey::from_ed_pem(k.as_bytes())?,
+            aruna_cache::structs::PubKey::Server(k) => DecodingKey::from_ed_pem(k.as_bytes())?,
         };
-        Ok((
-            decode::<ArunaTokenClaims>(token, &dec_key, &Validation::new(Algorithm::EdDSA))?.claims,
-            is_proxy,
-        ))
+        Ok(decode::<ArunaTokenClaims>(token, &dec_key, &Validation::new(Algorithm::EdDSA))?.claims)
     }
 
     async fn validate_oidc_only(&self, token: &str) -> Result<ArunaTokenClaims> {

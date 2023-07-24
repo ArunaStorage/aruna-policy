@@ -1,6 +1,8 @@
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use anyhow::anyhow;
+use aruna_cache::structs::Resource;
 use aruna_rust_api::api::storage::models::v2::Permission;
 use aruna_rust_api::api::storage::models::v2::PermissionLevel;
 use diesel_ulid::DieselUlid;
@@ -75,8 +77,6 @@ pub enum ResWithPerm {
     Collection((DieselUlid, PermissionLevel)),
     Dataset((DieselUlid, PermissionLevel)),
     Object((DieselUlid, PermissionLevel)),
-    User(DieselUlid),
-    GlobalAdmin,
 }
 
 impl TryFrom<Permission> for ResWithPerm {
@@ -85,6 +85,7 @@ impl TryFrom<Permission> for ResWithPerm {
     fn try_from(value: Permission) -> Result<Self, Self::Error> {
         Ok(
             match value
+                .clone()
                 .resource_id
                 .ok_or_else(|| anyhow!("Unknown resource_id"))?
             {
@@ -105,5 +106,119 @@ impl TryFrom<Permission> for ResWithPerm {
                 }
             },
         )
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default)]
+pub struct AllUserPermission {
+    pub perms: Vec<ResWithPerm>,
+    pub user_id: Option<DieselUlid>,
+    pub is_sa: bool,
+    pub is_admin: bool,
+}
+
+impl AllUserPermission {
+    fn check_single_perm(&self, perm: ApeResourcePermission) -> (bool, Option<HashSet<Resource>>) {
+        if perm.allow_sa && self.is_sa {
+            return (true, None);
+        }
+        let mut constraints = HashSet::new();
+
+        for x in self.perms.iter() {
+            match x {
+                ResWithPerm::Project((id, lvl)) => {
+                    if PermissionLevels::from(*lvl) >= perm.level {
+                        if id == &perm.id {
+                            return (true, None);
+                        } else {
+                            constraints.insert(Resource::Project(id.clone()));
+                        }
+                    }
+                }
+                ResWithPerm::Collection((id, lvl)) => {
+                    if PermissionLevels::from(*lvl) >= perm.level {
+                        if id == &perm.id {
+                            return (true, None);
+                        } else {
+                            constraints.insert(Resource::Project(id.clone()));
+                        }
+                    }
+                }
+                ResWithPerm::Dataset((id, lvl)) => {
+                    if PermissionLevels::from(*lvl) >= perm.level {
+                        if id == &perm.id {
+                            return (true, None);
+                        } else {
+                            constraints.insert(Resource::Project(id.clone()));
+                        }
+                    }
+                }
+                ResWithPerm::Object((id, lvl)) => {
+                    if PermissionLevels::from(*lvl) >= perm.level {
+                        if id == &perm.id {
+                            return (true, None);
+                        } else {
+                            constraints.insert(Resource::Project(id.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        if constraints.is_empty() {
+            (false, None)
+        } else {
+            (true, Some(constraints))
+        }
+    }
+
+    pub fn compare_ctx(&self, ctx: Context) -> (bool, Option<(Resource, HashSet<Resource>)>) {
+        match ctx {
+            Context::GlobalAdmin => {
+                if self.is_admin {
+                    (true, None)
+                } else {
+                    (false, None)
+                }
+            }
+            Context::Empty => (true, None),
+            Context::ResourceContext(res_ctx) => match res_ctx {
+                ResourceContext::Project(pperm) => {
+                    if let Some(perm) = pperm {
+                        let (ok, constraints) = self.check_single_perm(perm.clone());
+                        return (ok, constraints.map(|x| (Resource::Project(perm.id), x)));
+                    } else {
+                        (true, None)
+                    }
+                }
+                ResourceContext::Collection(cperm) => {
+                    let (ok, constraints) = self.check_single_perm(cperm.clone());
+                    return (ok, constraints.map(|x| (Resource::Collection(cperm.id), x)));
+                }
+                ResourceContext::Dataset(dperm) => {
+                    let (ok, constraints) = self.check_single_perm(dperm.clone());
+                    return (ok, constraints.map(|x| (Resource::Collection(dperm.id), x)));
+                }
+                ResourceContext::Object(operm) => {
+                    let (ok, constraints) = self.check_single_perm(operm.clone());
+                    return (ok, constraints.map(|x| (Resource::Collection(operm.id), x)));
+                }
+            },
+            Context::User(uid) => match self.user_id {
+                Some(id) => {
+                    if id == uid.id {
+                        (true, None)
+                    } else {
+                        (false, None)
+                    }
+                }
+                None => {
+                    if uid.allow_proxy {
+                        (true, None)
+                    } else {
+                        (false, None)
+                    }
+                }
+            },
+        }
     }
 }
