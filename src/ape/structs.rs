@@ -71,6 +71,44 @@ pub enum Context {
     GlobalAdmin,
 }
 
+impl Context {
+    pub fn empty() -> Self {
+        Context::Empty
+    }
+
+    pub fn res_proj(res_perm: Option<(DieselUlid, PermissionLevels, bool)>) -> Self {
+        Context::ResourceContext(ResourceContext::Project(
+            res_perm.map(|p| ApeResourcePermission::new(p.0, p.1, p.2)),
+        ))
+    }
+
+    pub fn res_col(id: DieselUlid, level: PermissionLevels, allow_sa: bool) -> Self {
+        Context::ResourceContext(ResourceContext::Collection(ApeResourcePermission::new(
+            id, level, allow_sa,
+        )))
+    }
+
+    pub fn res_ds(id: DieselUlid, level: PermissionLevels, allow_sa: bool) -> Self {
+        Context::ResourceContext(ResourceContext::Dataset(ApeResourcePermission::new(
+            id, level, allow_sa,
+        )))
+    }
+
+    pub fn res_obj(id: DieselUlid, level: PermissionLevels, allow_sa: bool) -> Self {
+        Context::ResourceContext(ResourceContext::Object(ApeResourcePermission::new(
+            id, level, allow_sa,
+        )))
+    }
+
+    pub fn user(id: DieselUlid, allow_proxy: bool) -> Self {
+        Context::User(ApeUserPermission { id, allow_proxy })
+    }
+
+    pub fn admin() -> Self {
+        Context::GlobalAdmin
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ResWithPerm {
     Project((DieselUlid, PermissionLevel)),
