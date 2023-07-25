@@ -4,7 +4,7 @@ use super::{
 };
 use crate::token::token_handler::TokenHandler;
 use anyhow::{anyhow, Result};
-use aruna_cache::{notifications::NotificationCache, query::QueryHandler};
+use aruna_cache::notifications::NotificationCache;
 use diesel_ulid::DieselUlid;
 use std::{collections::HashSet, sync::Arc};
 
@@ -14,13 +14,7 @@ pub struct PolicyEvaluator {
 }
 
 impl PolicyEvaluator {
-    pub async fn new(
-        client_token: &str,
-        server_addr: &str,
-        oidc_realminfo: &str,
-        qhandler: Box<dyn QueryHandler + Send + Sync>,
-    ) -> Result<Self> {
-        let cache = Arc::new(NotificationCache::new(client_token, server_addr, qhandler).await?);
+    pub async fn new(oidc_realminfo: &str, cache: Arc<NotificationCache>) -> Result<Self> {
         Ok(PolicyEvaluator {
             cache: cache.clone(),
             token_handler: TokenHandler::new(cache.clone(), oidc_realminfo.to_string()),
